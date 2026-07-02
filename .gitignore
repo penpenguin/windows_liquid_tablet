@@ -1,0 +1,13 @@
+build/
+out/
+artifacts/
+windows/*_driver/bin/
+windows/*_driver/obj/
+windows/hid_driver_optional/bin/
+windows/hid_driver_optional/obj/
+*.user
+*.suo
+*.swp
+.DS_Store
+.serena/
+__pycache__/

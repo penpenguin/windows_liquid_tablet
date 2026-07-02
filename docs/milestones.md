@@ -1,0 +1,1042 @@
+# Milestones
+
+## M0 Repository Initialization
+
+Status: Partially verified
+
+Goal: create the project skeleton, design docs, protocol docs, and build/test entry points.
+
+Acceptance:
+
+- README exists.
+- `docs/architecture.md`, `docs/protocol.md`, and this milestone index exist.
+- Windows host skeleton has a CMake target and smoke test.
+- iPad app skeleton has a Swift Package target and test entry point.
+- README links to M1 through M8.
+
+Current status:
+
+- Skeleton artifacts are present.
+- `tools/verify_m0.py` verifies the M0 repository structure.
+- Windows test entrypoint validates Config before CTest is accepted.
+- Windows test entrypoint rejects symbolic-link build directories before CTest is accepted.
+- Windows test entrypoint rejects symbolic-link build directory parents before CTest is accepted.
+- Windows test entrypoint rejects file-valued build paths before CTest is accepted.
+- Windows test entrypoint rejects file-valued build parent paths before CTest is accepted.
+- Windows test entrypoint stops after CTest failures before M0 is accepted.
+- CMake build must still be run in an environment with CMake and a C++20 compiler.
+
+## M1 Windows Synthetic Pen Input
+
+Status: Partially verified
+
+Implement `windows/host/src/input/synthetic_pen.*` using `CreateSyntheticPointerDevice(PT_PEN, 1, POINTER_FEEDBACK_NONE)` and `InjectSyntheticPointerInput`. Keep the state machine mockable and unit-tested. Acceptance requires a manual drawing check in Krita or a Windows Ink test app, pressure mapping tests, mandatory UP after DOWN, and disconnect fail-safe.
+
+Current status:
+
+- `PenSession` covers DOWN/MOVE/UP/CANCEL ordering and forced UP as pure host logic.
+- `map_pressure_to_windows` clamps `0.0..1.0` pressure into `0..1024`.
+- `map_tilt_to_windows` clamps tilt degrees into `-90..90` before Synthetic Pointer injection frames are emitted.
+- `SyntheticPen` is mockable through `SyntheticPenSink` and converts normalized samples to virtual screen injection frames.
+- `SyntheticPen` can update its virtual-screen target and forces UP before remapping an active stroke.
+- `synthetic_pen_win32.cpp` contains the Windows-only `CreateSyntheticPointerDevice(PT_PEN, 1, POINTER_FEEDBACK_NONE)` and `InjectSyntheticPointerInput` sink.
+- `--debug-fixed-rect` is wired as a Windows-only command that injects a fixed pressure- and tilt-varying rectangle through the Win32 sink.
+- `--debug-fixed-rect` accepts explicit screen rectangle options so the stroke can target selected virtual-screen coordinates.
+- `--debug-fixed-rect` accepts explicit normalized stroke rectangle options for custom DOWN/MOVE/UP coordinates.
+- `--debug-fixed-rect` prints sanitized command count, pressure range, tilt range, and status output for manual evidence.
+- Synthetic Pointer debug stroke evidence validator checks the fixed-rectangle command exit code, six-command count, pressure/tilt ranges, success marker, and payload-free output before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator requires ISO-8601 GeneratedAt metadata with timezone before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects impossible GeneratedAt calendar timestamps before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects future GeneratedAt timestamps before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects forbidden payload markers case-insensitively before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects forbidden payload markers with optional whitespace before equals before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects dry-run command metadata and requires explicit screen and stroke rectangle options before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator requires values for explicit screen and stroke rectangle options before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects non-positive screen sizes and non-normalized stroke rectangles before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects duplicate or unknown debug command options before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects duplicate key-value fields before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects case-variant duplicate key-value fields before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects missing evidence files before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects non-UTF-8 evidence files before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects directory evidence paths before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects symbolic-link evidence paths before manual evidence is accepted.
+- Synthetic Pointer debug stroke evidence validator rejects symbolic-link evidence parent directories before manual evidence is accepted.
+- Win32 Synthetic Pointer failures include GetLastError diagnostics for device creation and injection failures.
+- Manual Windows Ink/Krita drawing verification is not completed yet.
+
+## M2 iPad Apple Pencil Capture
+
+Status: Partially verified
+
+Implement `PencilCaptureView` with UIKit raw touches. Capture only `touch.type == .pencil`, use precise location, force, maximum force, altitude, azimuth, and coalesced touches. Acceptance requires DOWN/MOVE/UP logging, pressure `0.0..1.0`, configurable tilt signs, and finger touch separation.
+
+Current status:
+
+- `PencilSampleMapper` normalizes coordinates, pressure, timestamp, and altitude/azimuth tilt into testable values.
+- `PencilCaptureView` filters `touch.type == .pencil`, uses `preciseLocation(in:)`, `force`, `maximumPossibleForce`, `altitudeAngle`, `azimuthAngle(in:)`, and expands coalesced touches.
+- `PencilCaptureView` re-filters coalesced touches as Pencil-only before logging or forwarding samples.
+- Apple Pencil hover samples are routed through a Pencil-only `UIHoverGestureRecognizer` where available and logged as hover samples.
+- iPad session diagnostics record hover capability for Apple Pencil hover verification.
+- iPad session diagnostics record pressure capability from Pencil maximumPossibleForce before pressure evidence is accepted.
+- iPad session diagnostics record tilt capability from Pencil altitudeAngle and azimuthAngle before tilt evidence is accepted.
+- `PencilCaptureLog` formats Pencil DOWN/MOVE/UP samples with normalized coordinates, pressure, tilt, and timestamp for capture diagnostics.
+- Tilt sign correction is configurable through `TiltSignConfig`.
+- Simulator and real iPad + Apple Pencil verification are not completed yet.
+
+## M3 Input Protocol and Windows Receiver
+
+Status: Partially verified
+
+Send `PenPacketV1` from iPad to Windows and inject it through the host input adapter. Acceptance requires parser fuzz/invalid packet tests, sequence gap logging, forced UP on disconnect, and end-to-end pen drawing.
+
+Current status:
+
+- `PenPacketV1` is documented and defined as a packed 38 byte structure.
+- iPad `PenPacketEncoder` serializes `PencilSample` into the 38-byte little-endian V1 packet and increments sequence numbers.
+- iPad `PencilInputTransport` connects encoded packets to a mockable `PencilPacketSender`.
+- `FakeIpadPacketGenerator` provides deterministic iPad-like packet bytes for non-Windows input integration tests.
+- `LoopbackByteStreamReader` provides a reusable loopback transport for non-Windows input integration tests.
+- `PenPacketStreamReader` frames fragmented byte streams into fixed-size V1 packets before parsing.
+- `parse_pen_packet_v1` validates magic, version, type, coordinates, pressure, and tilt.
+- `invalid_pen_packet_corpus` provides deterministic invalid packet samples that exercise parser error paths.
+- `SequenceTracker` reports sequence gaps and duplicate/out-of-order packets.
+- Host diagnostics retain sequence gap details with expected sequence, actual sequence, and missing count.
+- iPad `TcpPencilPacketSender` adapts `PencilPacketSender` to a Network.framework `NWConnection` using TCP.
+- iPad `TcpPencilPacketSender` records Network.framework ready, failed, and cancelled diagnostics without logging endpoint addresses.
+- `PenInputReceiver` connects parser, sequence tracking, packet type conversion, and `SyntheticPen`; disconnect can force UP.
+- Host `PenInputConnection` pumps a mockable byte stream through packet framing and receiver logic, forcing UP on close/error.
+- Host `PenInputConnection` distinguishes closed and error disconnect reasons for runtime diagnostics while preserving forced UP handling.
+- Host `PenInputConnection` and `PenInputRuntime` force UP after a configurable 100-300 ms host-side idle timeout when no packets arrive after a pen DOWN.
+- Host receiver forwards hover packets before contact without marking the pen session active.
+- Host receiver reports inactive move packets as not injected so diagnostics do not count no-op input as accepted.
+- Host input runtime results carry device-to-host input latency from packet timestamps into runtime diagnostics.
+- Host input runtime can update the Synthetic Pointer target rectangle and forces UP before a live target remap.
+- Host input runtime can resolve its input target from a preferred Win32 display device id through `--screen-device`; an explicit `--screen-device` target must match an enumerated display before injection starts.
+- Host `PenInputRuntime` owns the TCP input stream, Synthetic Pointer sink, receiver, and connection pump boundary.
+- Windows TCP byte-stream adapter exposes a split listen/accept boundary so tablet sessions can open the input listener before blocking on accepted clients.
+- `TcpEndpoint` validates host/listen configuration and the Windows TCP byte-stream adapter maps Winsock `recv` results into `ByteStreamReader`.
+- End-to-end iPad-to-Windows injection verification is not completed yet.
+
+## M4 Existing Display Video Streaming
+
+Status: Partially verified
+
+Capture an existing Windows display and render it on iPad before implementing a virtual display. Video and input remain separate channels. Acceptance requires FPS and latency logs for send, receive, encode, and decode.
+
+Current status:
+
+- `VideoFrame` defines the host-side frame payload metadata used by capture/codec boundaries.
+- `VideoPacketHeaderV1` defines the 40 byte little-endian video frame wire header.
+- `VideoCaptureSource`, `VideoEncoder`, and `VideoSender` define swappable boundaries for capture, encoding, and video transport.
+- Windows `DesktopDuplicationCaptureSource` captures BGRA frames through D3D11/DXGI Desktop Duplication.
+- `GeneratedVideoCaptureSource` provides a fake capture frame generator for non-Windows pipeline integration tests.
+- `LoopbackVideoSender` provides a reusable video loopback transport for non-Windows pipeline integration tests.
+- Windows `WindowsGraphicsCaptureSource` provides the WinRT Windows.Graphics.Capture adapter boundary.
+- WindowsGraphicsCaptureSource initializes a WinRT frame pool and capture session, then copies captured BGRA frames through a staging texture boundary.
+- WindowsGraphicsCaptureSource recreates the WinRT frame pool when capture content size changes.
+- Host video runtime can select Windows.Graphics.Capture through `--capture windows-graphics`.
+- Host video CLI rejects Windows.Graphics.Capture without a display device id.
+- Windows `MediaFoundationH264Encoder` provides the H.264 encoder adapter boundary for Media Foundation MFT output.
+- `serialize_video_packet` writes the host `EncodedVideoFrame` header and payload in the shared wire format.
+- Windows video packet serialization rejects payloads above the shared video payload safety limit before TCP send.
+- `VideoChannelConfig` enforces a separate TCP channel for video, and the Windows TCP video sender adapter sends serialized video packets from the user-mode host.
+- Windows TCP video sender adapter exposes a split listen/accept boundary so tablet sessions can open the video listener before blocking on accepted clients.
+- `LatestFrameQueue` keeps only the newest frame and increments a dropped-frame count when stale frames are replaced.
+- `VideoPipeline` connects capture, latest-only queue, encoding, send, and runtime FPS/capture/encode-latency diagnostics using mockable interfaces.
+- `video_loopback_pipeline_test` exercises generated capture through the video pipeline into the loopback sender.
+- `VideoPipeline` records a video warning diagnostic when a captured frame replaces an unsent stale frame.
+- Host stale-frame drop diagnostics include both replacement and dropped frame sequence numbers.
+- iPad video pipeline removes stale receive timestamp diagnostics when latest-only buffering drops older frames.
+- `VideoPipeline` records host send completion latency into the network stage when a send-finished timestamp is available.
+- `VideoPipeline` records a video warning diagnostic when the video sender rejects an encoded frame.
+- Host `VideoStreamingRuntime` owns the capture source, H.264 encoder, TCP video sender, and `VideoPipeline` pump boundary.
+- Host `HostSessionRuntime` pumps pen input and video streaming together so the user-mode host can run both channels in one session.
+- Host `HostSessionRuntime` starts both input and video TCP listeners before accepting either channel, allowing near-simultaneous iPad input/video connection attempts to queue on both sockets.
+- Host diagnostics record input and video TCP listener readiness without logging bind addresses, so E2E evidence can prove both listeners were open before accepted clients are required.
+- Host diagnostics record input and video TCP channel acceptance without logging peer addresses, so E2E evidence can prove both tablet session channels reached the host.
+- iPad `VideoPacketDecoder` validates encoded video packets and can add decode latency diagnostics, `VideoPacketStreamReader` reconstructs fragmented TCP video packets while routing decode diagnostics, `TcpVideoFrameReceiver` is the iPad TCP video frame receiver boundary that preserves decode diagnostics, and `VideoRenderPipeline` connects frames to a mockable renderer while dropping stale frames.
+- iPad `TcpVideoFrameReceiver` records Network.framework ready, failed, and cancelled diagnostics without logging endpoint addresses.
+- iPad `LoopbackVideoReceiver` decodes fragmented loopback video bytes into the render pipeline for non-network receive/render tests.
+- iPad video sequence tracking reports missing and duplicate/out-of-order video frames without logging pixel payloads.
+- iPad `VideoPacketDecoder` rejects packets whose payload exceeds the shared video payload safety limit.
+- iPad `VideoPacketDecoder` records a video warning diagnostic when a diagnostic decode call fails.
+- iPad `VideoPacketStreamReader` rejects oversized payload headers and re-synchronizes at the next video packet magic marker.
+- iPad `VideoPacketStreamReader` records a video warning diagnostic when it drops an oversized payload header.
+- iPad `VideoPacketStreamReader` records a video warning diagnostic when a complete packet fails to decode.
+- iPad `VideoRenderPipeline` can add receive FPS, network latency, render latency, and dropped-frame diagnostics to `AppDiagnosticLog`.
+- iPad `VideoRenderPipeline` records a video warning diagnostic when the renderer rejects a frame.
+- iPad `TabletSessionController` exposes receiver decode diagnostics together with `VideoRenderPipeline` receive/render diagnostics through the app-facing session path.
+- iPad `UIImageVideoRenderer` displays Debug JPEG frames through `UIImageView` for the first concrete renderer path.
+- iPad `AVSampleBufferH264Renderer` parses Annex B H.264 parameter sets and enqueues sample buffers into `AVSampleBufferDisplayLayer`.
+- iPad `AVSampleBufferH264Renderer` caches H.264 parameter sets so delta frames without SPS/PPS can render after the first key frame.
+- iPad `AVSampleBufferH264Renderer` commits H.264 parameter sets to the format cache only after CoreMedia format description creation succeeds.
+- iPad `AVSampleBufferH264Renderer` builds AVCC sample payloads without duplicating SPS/PPS parameter sets.
+- iPad `MetalVideoRenderer` provides a Metal-backed renderer adapter for Debug JPEG frames.
+- `FpsCounter` calculates frame rate from frame timestamps.
+- Windows.Graphics.Capture monitor-backed item selection is implemented; frame pool/frame copy completion still require Windows runtime verification.
+
+## M5 Coordinate Mapping and Calibration
+
+Status: Partially verified
+
+Implement normalized point to Windows virtual screen mapping, display layout adapter, rotation, aspect ratio correction, DPI awareness, and calibration UI. Acceptance requires corner, center, and diagonal verification.
+
+Current status:
+
+- `map_normalized_to_virtual_screen` maps clamped normalized points into an integer virtual screen rectangle.
+- `map_device_point_to_virtual_screen` applies rendered-content aspect/letterbox correction and display rotation before mapping to the target virtual screen rectangle.
+- Host display mapping tests cover diagonal top-left to bottom-right alignment.
+- `DisplayLayoutSnapshot` models display bounds, scale, primary display selection, and target display lookup.
+- `query_win32_display_layout` adapts `EnumDisplayMonitors`, `GetMonitorInfoA`, and `GetDpiForMonitor` into `DisplayLayoutSnapshot`.
+- `apply_display_scale` converts logical display bounds into scaled physical bounds for DPI-aware mapping.
+- `resolve_display_target` recalculates the scaled input target from a fresh display layout using the preferred display id with primary fallback.
+- Host session runtime can refresh its input target from a fresh display layout snapshot, update diagnostics, and force UP before remapping an active stroke.
+- Host session runtime refuses to refresh an explicit preferred display id to the primary display when the preferred display is missing.
+- Host CLI accepts `--screen-device` so the input target can follow a Windows display device name instead of a hand-entered rectangle.
+- `default_calibration_pattern` provides four corners, center, and diagonal calibration points.
+- `CalibrationSession` records measured points and derives an average normalized offset for calibration feedback.
+- iPad `CalibrationWorkflow` is an iPad calibration workflow model that exposes the current target and records Pencil samples for corner, center, and diagonal verification.
+- iPad `CalibrationWorkflow` can record landscape samples directly and portrait samples after orientation normalization into calibration space.
+- iPad `CalibrationWorkflowResult` can apply the measured offset to future Pencil samples while clamping corrected coordinates.
+- iPad `CalibrationCaptureSession` records coalesced Pencil samples into the workflow and emits the completed calibration result once.
+- iPad `TabletSessionView` can apply the calibration result to outgoing Pencil samples after pressure and display-orientation transforms.
+- iPad `TabletAppRootConfiguration` can carry a calibration result into the live tablet session view.
+- iPad `AppSettingsStore` can persist a calibration result and restore it into the live tablet root configuration.
+- iPad `CalibrationOverlayView` renders the current calibration target marker and progress from `CalibrationWorkflow`.
+
+## M6 Indirect Display Driver
+
+Status: In progress
+
+Implement an IddCx-based indirect display driver that creates a virtual monitor. The driver must not own networking. Acceptance requires a visible virtual monitor, at least three resolutions, 60 Hz reporting, host capture, and documented test-sign/install steps.
+
+Current status:
+
+- `windows/idd_driver/src/virtual_monitor_modes.*` defines four 60Hz mode candidates: 1920x1080, 2560x1440, 2732x2048, and the 2048x2732 portrait native mode.
+- The mode table helper validates duplicate-free 60Hz mode tables before the driver reports candidate resolutions.
+- The mode table helper selects requested virtual monitor modes by exact resolution.
+- The mode table helper advertises the 2048x2732 native portrait mode as the preferred mode.
+- The virtual monitor mode table test is available through CMake without building the WDK driver skeleton.
+- The virtual monitor identity helper builds a checksum-valid EDID base block with the encoded WLT manufacturer ID, product code `0x1001`, and monitor name `WindowsLiquid`.
+- The virtual monitor descriptor bundles the EDID, mode table, and preferred mode under the `WindowsLiquidTablet` device group identity before the WDK-only IddCx boundary consumes it.
+- The IddCx monitor report projects the descriptor into EDID size, mode count, preferred mode index, and device group id fields for the eventual WDK callback wiring.
+- The IddCx monitor registration boundary separates invalid report, adapter rejection, and successful registration outcomes behind a mockable registrar interface.
+- The IddCx driver start flow performs default descriptor registration through that boundary while keeping the WDK-only adapter thin.
+- The DeviceAdd status mapping keeps WDK-specific NTSTATUS conversion separate while preserving success, configuration error, and adapter state failure outcomes for tests.
+- The NTSTATUS bridge maps DeviceAdd outcomes to `STATUS_SUCCESS`, `STATUS_DEVICE_CONFIGURATION_ERROR`, and `STATUS_INVALID_DEVICE_STATE` for the WDK-only return path.
+- The DeviceAdd flow composes start, status mapping, and NTSTATUS conversion behind one testable WDK callback boundary.
+- The WDK DeviceAdd IddCx device initialization path configures the IddCx client, creates the WDF device, and calls `IddCxDeviceInitialize` before monitor arrival work.
+- The WDK monitor arrival bridge creates an IDDCX monitor from the default EDID report and completes arrival with `IddCxMonitorArrival`.
+- WDK monitor departure bridge reports monitor removal through IddCxMonitorDeparture after releasing any active swapchain.
+- The WDK mode callbacks expose the four 60Hz virtual monitor modes to IddCx as monitor description, default description, and target modes.
+- WDK adapter commit modes tracks the active IddCx path and target signal for committed mode changes.
+- WDK adapter initialization creates the IddCx adapter during D0 entry with one supported monitor and endpoint diagnostics.
+- WDK swapchain callbacks retain the assigned swapchain and release it on unassign.
+- WDK swapchain device setup records DXGI device readiness and memory placement before frame processing.
+- WDK swapchain D3D device setup creates a DXGI device from the assigned render adapter before setting the IddCx swapchain device.
+- WDK system-memory swapchain acquire uses the IddCx system-buffer acquire variant for system-memory swapchains and keeps the DXGI acquire path separate.
+- WDK swapchain frame processing can acquire a frame, record frame metadata, release the DX surface reference, and report frame processing completion.
+- WDK swapchain frame processing intentionally stops at IddCx completion; host capture owns encode/send.
+- WDK swapchain frame pump uses the next-surface event boundary and records pending, failed, and completed pump attempts.
+- WDK swapchain frame pump thread starts on swapchain assignment and stops before unassign or D0 exit teardown.
+- WDK frame pump MMCSS registers the swapchain pump thread with MMCSS and reverts before thread exit.
+- WDK frame statistics reporting publishes completed-frame status, frame number, QPC acquire time, and processed pixel counts back to IddCx.
+- WDK power teardown releases any active swapchain when the device leaves D0.
+- WDK UMDF project builds the IDD as a WindowsUserModeDriver10.0 dynamic library and uses UMDF/IddCx INF registration.
+- WDK build script rejects symbolic-link project paths before virtual monitor verification is accepted.
+- WDK build script rejects symbolic-link project parent directories before virtual monitor verification is accepted.
+- WDK build script rejects directory project paths before virtual monitor verification is accepted.
+- WDK build script rejects symbolic-link MSBuild tool paths before virtual monitor verification is accepted.
+- WDK build script rejects symbolic-link MSBuild tool parent directories before virtual monitor verification is accepted.
+- WDK build script rejects directory MSBuild tool paths before virtual monitor verification is accepted.
+- WDK build script restricts Configuration to Debug or Release and Platform to x64 before virtual monitor verification is accepted.
+- WDK build script rejects directory built driver outputs before virtual monitor verification is accepted.
+- Windows build entrypoint rejects symbolic-link build directories before virtual monitor verification is accepted.
+- Windows build entrypoint rejects symbolic-link build directory parents before virtual monitor verification is accepted.
+- Windows build entrypoint rejects file-valued build paths before virtual monitor verification is accepted.
+- Windows build entrypoint rejects file-valued build parent paths before virtual monitor verification is accepted.
+- Windows build entrypoint restricts Config to Debug or Release and IDD Platform to x64 before virtual monitor verification is accepted.
+- Windows build entrypoint stops after CMake configure failures before virtual monitor verification is accepted.
+- Windows build entrypoint stops after CMake build failures before virtual monitor verification is accepted.
+- UMDF DLL entrypoints provide DllMain and DriverEntry for WDF driver creation.
+- WDK packaging script stages the development INF and DLL, runs Inf2Cat, and can test-sign the generated catalog through signtool.
+- WDK packaging script rejects symbolic-link package output directories before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link package output parent directories before virtual monitor verification is accepted.
+- WDK packaging script rejects file-valued package output paths before virtual monitor verification is accepted.
+- WDK packaging script rejects file-valued package output parent paths before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link INF inputs before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link INF input parent directories before virtual monitor verification is accepted.
+- WDK packaging script rejects directory INF inputs before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link driver binary inputs before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link driver binary input parent directories before virtual monitor verification is accepted.
+- WDK packaging script rejects directory driver binary inputs before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link staged INF outputs before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link staged driver binary outputs before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link catalog outputs before virtual monitor verification is accepted.
+- WDK packaging script resolves Inf2Cat before staging package outputs.
+- WDK packaging script resolves signtool before staging package outputs when test signing is requested.
+- WDK packaging script verifies the generated catalog before optional signing.
+- WDK packaging script rejects symbolic-link Inf2Cat tool paths before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link Inf2Cat tool parent directories before virtual monitor verification is accepted.
+- WDK packaging script rejects directory Inf2Cat tool paths before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link signtool tool paths before virtual monitor verification is accepted.
+- WDK packaging script rejects symbolic-link signtool tool parent directories before virtual monitor verification is accepted.
+- WDK packaging script rejects directory signtool tool paths before virtual monitor verification is accepted.
+- WDK packaging script rejects malformed test certificate thumbprints before virtual monitor verification is accepted.
+- WDK packaging script rejects malformed Inf2Cat OS version lists before virtual monitor verification is accepted.
+- WDK build entrypoints pass Inf2Cat OS version lists through packaging before virtual monitor verification is accepted.
+- WDK install scripts create a ROOT devnode with DevGen, install the development package with PnPUtil, enumerate matching devices, and remove the development device.
+- WDK install scripts reject symbolic-link INF paths before virtual monitor verification is accepted.
+- WDK install scripts reject symbolic-link INF parent directories before virtual monitor verification is accepted.
+- WDK install scripts reject directory INF paths before creating development devnodes.
+- WDK install scripts reject symbolic-link DevGen tool paths before virtual monitor verification is accepted.
+- WDK install scripts reject symbolic-link DevGen tool parent directories before virtual monitor verification is accepted.
+- WDK install scripts reject directory DevGen tool paths before virtual monitor verification is accepted.
+- WDK install scripts reject symbolic-link PnPUtil tool paths before virtual monitor verification is accepted.
+- WDK install scripts reject symbolic-link PnPUtil tool parent directories before virtual monitor verification is accepted.
+- WDK install scripts reject directory PnPUtil tool paths before virtual monitor verification is accepted.
+- WDK install scripts restrict HardwareId to Root\WindowsLiquidTabletIdd before virtual monitor verification is accepted.
+- WDK install scripts restrict InstanceId to WindowsLiquidTabletIdd before virtual monitor verification is accepted.
+- WDK uninstall scripts restrict HardwareId to Root\WindowsLiquidTabletIdd before virtual monitor verification is accepted.
+- WDK uninstall scripts restrict published INF deletion to oem<number>.inf names before virtual monitor verification is accepted.
+- WDK uninstall scripts reject symbolic-link PnPUtil tool paths before virtual monitor verification is accepted.
+- WDK uninstall scripts reject symbolic-link PnPUtil tool parent directories before virtual monitor verification is accepted.
+- WDK uninstall scripts reject directory PnPUtil tool paths before virtual monitor verification is accepted.
+- IDD runtime evidence script collects sanitized PnP, published driver, monitor, video controller, and host capture command evidence.
+- IDD runtime evidence script refuses accidental runtime evidence overwrite before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects symbolic-link output paths before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects symbolic-link output parent directories before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects directory output paths before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects file-valued output parent paths before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects symbolic-link PnPUtil tool paths before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects symbolic-link PnPUtil tool parent directories before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects directory PnPUtil tool paths before virtual monitor verification is accepted.
+- IDD runtime evidence script restricts HardwareId to Root\WindowsLiquidTabletIdd before virtual monitor verification is accepted.
+- IDD runtime evidence script restricts DisplayDeviceName to \\.\DISPLAY<number> before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects invalid host command port values before virtual monitor verification is accepted.
+- IDD runtime evidence script rejects duplicate host command input/video ports before virtual monitor verification is accepted.
+- IDD display device evidence records EnumDisplayDevices adapter and monitor names for Windows display settings verification.
+- IDD display mode evidence records expected 60Hz virtual monitor modes from Windows display metadata.
+- IDD runtime evidence validator checks collected display-device, display-mode, published INF, OK PnP device, and host-capture evidence.
+- IDD runtime evidence validator requires ISO-8601 GeneratedAt metadata with timezone before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects impossible GeneratedAt calendar timestamps before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects future GeneratedAt timestamps before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects forbidden payload markers case-insensitively before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects forbidden payload markers with optional whitespace before equals before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects duplicate singleton runtime evidence fields before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects case-variant duplicate singleton runtime evidence fields before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects conflicting selected PnP device status or class lines before virtual monitor verification is accepted.
+- IDD runtime evidence validator requires selected DisplayDevice and MonitorDevice lines to identify the WindowsLiquid virtual monitor.
+- IDD runtime evidence validator rejects conflicting selected DisplayDevice or MonitorDevice identity lines before virtual monitor verification is accepted.
+- IDD runtime evidence validator requires selected DisplayDevice name and MonitorDevice adapter fields to match the selected display.
+- IDD runtime evidence validator requires the collected ExpectedMode list to match expected 60Hz virtual monitor modes.
+- IDD runtime evidence validator rejects unexpected ExpectedMode or AvailableMode entries before virtual monitor verification is accepted.
+- IDD runtime evidence validator requires the selected display CurrentMode to match an expected 60Hz virtual monitor mode.
+- IDD runtime evidence validator requires one host capture command line to target the selected virtual monitor with Windows.Graphics.Capture.
+- IDD runtime evidence validator rejects conflicting host capture command lines before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects missing evidence files before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects directory evidence paths before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects symbolic-link evidence paths before virtual monitor verification is accepted.
+- IDD runtime evidence validator rejects symbolic-link evidence parent directories before virtual monitor verification is accepted.
+- IDD Windows verification runner chains WDK build, package, install, runtime evidence collection, and cleanup for development verification.
+- IDD Windows verification runner validates completed IDD verification evidence before a virtual monitor run is accepted.
+- IDD Windows verification runner performs native tool preflight before WDK build/install evidence is accepted.
+- IDD Windows verification runner writes native preflight output to sanitized evidence before WDK build/install evidence is accepted.
+- IDD Windows verification runner refuses accidental native preflight evidence overwrite before WDK build/install evidence is accepted.
+- IDD Windows verification runner rejects symbolic-link native preflight evidence output paths before WDK build/install evidence is accepted.
+- IDD Windows verification runner rejects symbolic-link native preflight evidence output parent directories before WDK build/install evidence is accepted.
+- IDD Windows verification runner rejects directory native preflight evidence output paths before WDK build/install evidence is accepted.
+- IDD Windows verification runner rejects file-valued native preflight evidence output parent paths before WDK build/install evidence is accepted.
+- IDD Windows verification runner rejects symbolic-link Python command paths before WDK build/install evidence is accepted.
+- IDD Windows verification runner rejects symbolic-link Python command parent directories before WDK build/install evidence is accepted.
+- IDD Windows verification runner rejects directory Python command paths before WDK build/install evidence is accepted.
+- IDD Windows verification runner records the resolved Python command in native preflight evidence before WDK build/install evidence is accepted.
+- IDD Windows verification runner validates saved native preflight evidence before WDK build/install evidence is accepted.
+- IDD Windows verification runner validates saved native preflight evidence before failing on a native preflight exit code.
+- IDD Windows verification runner rejects directory packaged INF paths before install is accepted.
+- IDD Windows verification runner restricts Configuration to Debug or Release and Platform to x64 before WDK build/install evidence is accepted.
+- IDD Windows verification runner restricts DisplayDeviceName to \\.\DISPLAY<number> before runtime evidence is accepted.
+- `windows/idd_driver/src/driver_entry.cpp` is a WDK-only IddCx skeleton and explicitly keeps networking out of the driver.
+- `windows/idd_driver/inf/windows_liquid_tablet_idd.inf` is a development INF skeleton.
+- Development test-signing, `pnputil` install/uninstall, Device Manager, and Windows display settings verification steps are documented.
+- IDD driver verification evidence template records WDK build, install, Device Manager, display settings, and host capture evidence.
+- IDD verification evidence validator checks completed driver evidence rows before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects duplicate evidence rows before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects case-variant duplicate evidence rows before virtual monitor verification is accepted.
+- IDD verification evidence validator reports both first and duplicate evidence row names for case-variant duplicates.
+- IDD verification evidence validator rejects invalid evidence row result values before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects forbidden payload markers case-insensitively before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects forbidden payload markers with optional whitespace before equals before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects duplicate metadata fields before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects case-variant duplicate metadata fields before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects placeholder metadata values before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects placeholder values in every recorded metadata field before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects embedded placeholder text in metadata values before virtual monitor verification is accepted.
+- IDD verification evidence validator requires Evidence ID values for accepted PASS rows.
+- IDD verification evidence validator requires accepted PASS row Evidence IDs to match the run Evidence ID.
+- IDD verification evidence validator requires completed run metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator requires ISO YYYY-MM-DD Test date metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects future Test date metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator requires concrete Host commit metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator requires Windows 11 build metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator requires Visual Studio 2022 and WDK 10 metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects Test-signing state metadata that denies enabled test signing before virtual monitor verification is accepted.
+- IDD verification evidence validator requires IDD INF and catalog metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator requires INF and catalog metadata to stay under Driver package path before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects Windows-invalid metadata paths before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects duplicate metadata evidence paths before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects driver signing bypass metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects driver signing bypass evidence text before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects Secure Boot disablement metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects ambiguous driver signing metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator requires runtime evidence validator PASS before virtual monitor verification is accepted.
+- IDD verification evidence validator requires native tool preflight PASS before virtual monitor verification is accepted.
+- IDD verification evidence validator requires expected runner and validator metadata before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects missing evidence files before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects non-UTF-8 evidence files before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects directory evidence paths before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects symbolic-link evidence paths before virtual monitor verification is accepted.
+- IDD verification evidence validator rejects symbolic-link evidence parent directories before virtual monitor verification is accepted.
+- Driver signing safety gate verifies documented WDK/test-signing flows without signature-bypass commands.
+- Host video capture can target a DXGI output by Win32 display device name for virtual monitor capture tests.
+- Host video capture validates fallback DXGI output indexes against attached outputs before capture starts.
+- Host video diagnostics record the selected capture target and command capture source without screen contents or pixel payloads.
+- Host tablet session defaults virtual monitor capture to `--screen-device` and rejects mismatched screen/output device names.
+- Host input/session diagnostics use the resolved `--screen-device` display bounds instead of the unresolved fallback rectangle.
+- Actual WDK build, installation, Device Manager enumeration, Windows display settings visibility, and host capture from a virtual monitor are not completed yet.
+
+## M7 Latency Work
+
+Status: Partially verified
+
+Prioritize input over video, keep queues shallow, drop stale frames, instrument latency stages, and separate low-latency and high-quality modes. Acceptance requires end-to-end latency measurement with p50 and p95 logs.
+
+Current status:
+
+- The video queue policy starts as latest-only, which prevents stale frame buildup.
+- `LatencyStats` calculates p50, p95, max, and sample count for latency samples.
+- `StageLatencyTelemetry` aggregates capture, encode, network, decode, render, and input-injection stage latency reports.
+- `EndToEndLatencyTelemetry` records start-to-finish latency samples and reports p50/p95/max.
+- `format_latency_report` formats stage and end-to-end p50/p95/max reports for diagnostic logging.
+- `StreamingModeConfig` separates low-latency and high-quality encoder/queue policy choices.
+- Low-latency mode fixes the H.264 B-frame count to zero and uses a one-frame jitter buffer.
+- Host video startup accepts explicit FPS and bitrate CLI overrides on top of the selected streaming mode.
+- Host session runtime defers video pumping while input packets are being processed so input bursts can drain first.
+- Host video diagnostics record stale-frame drops from the latest-only frame queue.
+- `VideoPipeline` records host capture-start to send-finish end-to-end latency when send timing is available, falling back to encode-finish timing otherwise.
+- `RuntimeDiagnostics` wires FPS, capture/encode/network/decode/render/input stage latency, and end-to-end latency measurements into `DiagnosticLog`.
+- RuntimeDiagnostics records timestamped forced pen-up events while preserving the aggregate forced pen-up count.
+- `RuntimeDiagnostics` records video send failures as warning events for host stream troubleshooting.
+- Host `HostSessionRuntime` records accepted input packet latency as the `InputInject` runtime diagnostic stage.
+
+## M8 Practical Features
+
+Status: Partially verified
+
+Add pressure curves, tilt correction, palm rejection settings, shortcut panels, pairing/reconnect, diagnostics, and log export. Acceptance requires manual checklists for Clip Studio Paint, Krita, and Photoshop, saved pressure curve settings, and reconnect recovery.
+
+Current status:
+
+- `apply_pressure_curve` supports gamma, minimum output, maximum output, and input/output clamping as testable pure logic.
+- `AppSettings` stores pressure curve, tilt sign, handedness, palm rejection, display orientation, and optional calibration result as Codable JSON, with defaults for older settings files.
+- `AppSettingsPresentation` and `AppSettingsView` expose pressure sliders, tilt sign correction toggles, palm rejection toggles, handedness selection, and display orientation selection.
+- `PalmRejectionPolicy` keeps finger touches out of the Pencil sample stream while allowing configured multi-finger shortcuts.
+- iPad session diagnostics record rejected finger touches as palm rejection evidence without sending them as Pencil samples.
+- `AppSettingsStore` saves and loads settings through a file-backed JSON store.
+- iPad `TabletAppRootFactory` loads saved `AppSettingsStore` values into the live root configuration.
+- `AppSettingsPencilSampleAdapter` can apply saved pressure curve and tilt sign correction to Pencil samples.
+- The display orientation setting rotates Pencil samples before they are sent to the host.
+- iPad `TabletSessionView` applies the configured pressure curve to Pencil samples before sending them to the host.
+- iPad `TabletSessionView` can apply an optional calibration result to Pencil coordinates before sending them to the host.
+- iPad `TabletAppRootView` and `TabletSessionView` pass saved palm rejection settings into `PencilCaptureView`.
+- iPad `TabletAppRootView` passes an optional calibration result into `TabletSessionView` for corrected outgoing coordinates.
+- The handedness setting positions the iPad shortcut panel away from the dominant hand.
+- `ShortcutPanel` models default undo, redo, eraser, Shift, and Alt actions with enable/disable state.
+- `ShortcutPanelPresentation` and `ShortcutPanelView` map shortcut actions to icon buttons for the iPad overlay.
+- `AppSettings`, `TabletAppRootView`, and `TabletSessionView` carry the shortcut panel configuration into the live iPad session overlay.
+- iPad session input supports two-finger undo and three-finger redo gestures when two-finger gestures are enabled.
+- iPad `ShortcutPacketEncoder` serializes shortcut panel actions into the input channel wire format, and the host parses and routes shortcut packets through a Win32 keyboard shortcut sink boundary.
+- iPad `TabletSessionController` records shortcut panel actions in the app diagnostic log.
+- iPad `TabletSessionController` records Pencil-only sample send diagnostics without packet payloads.
+- `PairingCode` and `PairingPayloadCodec` model a six-digit code and `wlt://pair?...` QR URI payload.
+- iPad `PairingQRCodeGenerator` creates a QR code image from the pairing URI.
+- `DiscoveryAdvertisement` and iPad `HostDiscoveryPayload` define the local host discovery TXT payload, reject unsupported discovery payload versions, require separate input/video ports, and deduplicate discovered hosts.
+- iPad `BonjourHostDiscoveryBrowser` and host `DiscoveryBroadcaster` define the concrete discovery transport boundaries.
+- Windows `UdpDiscoveryBroadcaster` sends the host discovery TXT payload over a Win32 UDP broadcast adapter.
+- Windows `MdnsDiscoveryBroadcaster` emits DNS-SD/mDNS PTR/SRV/TXT/A responses for Bonjour/mDNS interoperability, preserves the DNS-SD TXT record contract consumed by iPad `HostDiscoveryPayload`, rejects invalid IPv4 addresses before emitting mDNS A records, rejects invalid DNS names before emitting mDNS responses, and requires DNS-SD service types to use _service._tcp or _service._udp.
+- `HostRuntime` owns discovery broadcaster start/stop lifecycle through an injectable host runtime boundary.
+- `--advertise-discovery` command-line startup wiring builds `HostRuntimeConfig` and starts the host discovery broadcaster.
+- iPad `ConnectionCoordinator` ties discovered hosts to input/video transports and pairing/reconnect transport state.
+- iPad `ConnectionCoordinator` records connection, disconnect, and retry-delay diagnostics.
+- iPad `ConnectionCoordinator` records input/video transport start diagnostics before reporting the session connected.
+- iPad `ConnectionCoordinator` resets retry state when switching discovered hosts after a failed connect attempt.
+- iPad `ConnectionCoordinator` retains input/video transport diagnostics recorded during cancel.
+- iPad `TabletSessionController` connects discovery, Pencil packet sending, video receive buffering, and rendering into one app-facing session controller.
+- iPad `ConnectionCoordinator` keeps video receiver decode diagnostics available after disconnect/cancel so the controller diagnostic export can include them.
+- iPad `TabletSessionView` overlays `PencilCaptureView` on the video display and forwards Pencil samples to the session controller.
+- iPad `TabletAppModel` records discovered hosts, selects the freshest candidate, and connects it to the tablet session.
+- iPad `TabletAppModel` and `TabletLiveAppCoordinator` reconnect the best discovered host after a retryable disconnect.
+- iPad `TabletAppModel` preserves the next retry delay in disconnected state when an allowed reconnect attempt fails.
+- iPad `TabletAppModel` preserves the retry delay when no discovered host is available for reconnect.
+- iPad `TabletAppModel` records reconnect attempt, success, and waiting-for-candidate diagnostics.
+- iPad `TabletAppModel` records reconnect stability summaries with attempts and successful reconnect counts.
+- iPad `TabletLiveAppCoordinator` wires Bonjour discovery payloads into `TabletAppModel` and starts the selected tablet session.
+- iPad `TabletAppRoot` assembles the live renderer, tablet session controller, Bonjour discovery coordinator, and SwiftUI session view.
+- `ReconnectPolicy` defines capped reconnect delay and attempt behavior.
+- `ReconnectPolicy` clamps invalid delay settings and disables retry when maximum attempts is not positive.
+- Manual test evidence template records pass/fail/blocked hardware verification without screen contents.
+- Manual test evidence validator checks completed hardware evidence rows before E2E verification is accepted.
+- Manual test evidence validator rejects forbidden payload markers case-insensitively before E2E verification is accepted.
+- Manual test evidence validator rejects forbidden payload markers with optional whitespace before equals before E2E verification is accepted.
+- Manual test evidence validator rejects duplicate evidence rows before E2E verification is accepted.
+- Manual test evidence validator rejects case-variant duplicate evidence rows before E2E verification is accepted.
+- Manual test evidence validator reports both first and duplicate evidence row names for case-variant duplicates.
+- Manual test evidence validator rejects duplicate metadata fields before E2E verification is accepted.
+- Manual test evidence validator rejects case-variant duplicate metadata fields before E2E verification is accepted.
+- Manual test evidence validator rejects placeholder metadata values before E2E verification is accepted.
+- Manual test evidence validator rejects placeholder values in every recorded metadata field before E2E verification is accepted.
+- Manual test evidence validator rejects embedded placeholder text in metadata values before E2E verification is accepted.
+- Manual test evidence validator requires Evidence ID values for accepted PASS rows.
+- Manual test evidence validator requires accepted PASS row Evidence IDs to match the run Evidence ID.
+- Manual test evidence validator requires completed run metadata before E2E verification is accepted.
+- Manual test evidence validator requires ISO YYYY-MM-DD Test date metadata before E2E verification is accepted.
+- Manual test evidence validator rejects future Test date metadata before E2E verification is accepted.
+- Manual test evidence validator requires concrete Host and iPad app commit hashes before E2E verification is accepted.
+- Manual test evidence validator requires Windows 11 build metadata before E2E verification is accepted.
+- Manual test evidence validator requires concrete WDK 10 version metadata before E2E verification is accepted.
+- Manual test evidence validator requires host, iPad, IDD runtime evidence, and E2E diagnostic bundle validator metadata before E2E verification is accepted.
+- Manual test evidence validator rejects absolute manual evidence metadata paths before E2E verification is accepted.
+- Manual test evidence validator rejects parent-traversing manual evidence metadata paths before E2E verification is accepted.
+- Manual test evidence validator rejects empty or current-directory manual evidence metadata path segments before E2E verification is accepted.
+- Manual test evidence validator rejects Windows-invalid-character manual evidence metadata paths before E2E verification is accepted.
+- Manual test evidence validator rejects control-character manual evidence metadata paths before E2E verification is accepted.
+- Manual test evidence validator rejects Windows reserved-name manual evidence metadata paths before E2E verification is accepted.
+- Manual test evidence validator rejects trailing-dot-or-space manual evidence metadata path segments before E2E verification is accepted.
+- Manual test evidence validator rejects duplicate manual evidence metadata paths before E2E verification is accepted.
+- Manual test evidence validator requires an E2E diagnostic bundle validator PASS row before E2E verification is accepted.
+- Manual test evidence validator requires native tool preflight PASS before E2E verification is accepted.
+- Manual test evidence validator requires full native tool preflight coverage before E2E verification is accepted.
+- Manual test evidence validator requires full native tool preflight metadata before E2E verification is accepted.
+- Manual test evidence validator requires expected validator tool metadata before E2E verification is accepted.
+- Manual test evidence validator requires Synthetic Pointer debug fixed rectangle evidence before E2E verification is accepted.
+- Manual test evidence validator requires Synthetic Pointer debug stroke evidence validator PASS before E2E verification is accepted.
+- Manual test evidence validator requires host TCP channel acceptance evidence to include timestamp ordering after the iPad connected state before E2E verification is accepted.
+- Manual test evidence validator requires optional HID verification evidence metadata and validator PASS before optional HID E2E evidence is accepted.
+- Manual test evidence validator rejects non-pressure-capable Apple Pencil metadata before pressure evidence is accepted.
+- Manual test evidence validator rejects ambiguous Apple Pencil model metadata before pressure evidence is accepted.
+- Manual test evidence validator rejects generic Apple Pencil model metadata before pressure evidence is accepted.
+- Manual test evidence validator rejects iPad Simulator metadata before hardware evidence is accepted.
+- Manual test evidence validator requires Connection type metadata to include USB/IP and same LAN before connection evidence is accepted.
+- Manual test evidence validator rejects localhost or wildcard Host network address metadata before connection evidence is accepted.
+- Manual test evidence validator rejects URL Host network address metadata before connection evidence is accepted.
+- Manual test evidence validator rejects whitespace-containing Host network address metadata before connection evidence is accepted.
+- Manual test evidence validator rejects port-containing Host network address metadata before connection evidence is accepted.
+- Manual test evidence validator rejects DNS-unsafe Host network address metadata before connection evidence is accepted.
+- Manual test evidence validator rejects multicast or broadcast Host network address metadata before connection evidence is accepted.
+- Manual test evidence validator requires source-marked normalized Pencil sample diagnostics before E2E verification is accepted.
+- Manual test evidence validator requires coalesced Pencil MOVE evidence before E2E verification is accepted.
+- Manual test evidence validator requires shortcut gesture evidence before E2E verification is accepted.
+- Manual test evidence validator requires saved pressure curve settings evidence before E2E verification is accepted.
+- Manual test evidence validator requires Bonjour/mDNS discovery and QR pairing evidence before E2E verification is accepted.
+- Manual test evidence validator requires simultaneous input/video tablet session evidence before E2E verification is accepted.
+- Manual test evidence validator requires end-to-end p50/p95 latency evidence before E2E verification is accepted.
+- Manual test evidence validator requires current display mapping dimensions to match IDD CurrentMode before virtual monitor evidence is accepted.
+- Manual test evidence validator requires coordinate alignment tolerance metadata of 5 px or less before coordinate evidence is accepted.
+- Manual test evidence validator requires reconnect stability attempt metadata of at least 5 cycles before reconnect evidence is accepted.
+- Manual test evidence validator rejects missing evidence files before E2E verification is accepted.
+- Manual test evidence validator rejects non-UTF-8 evidence files before E2E verification is accepted.
+- Manual test evidence validator rejects directory evidence paths before E2E verification is accepted.
+- Manual test evidence validator rejects symbolic-link evidence paths before E2E verification is accepted.
+- Manual test evidence validator rejects symbolic-link evidence parent directories before E2E verification is accepted.
+- Native verification preflight reports required CMake, PowerShell, MSBuild, WDK packaging, signing, DevGen, and PnP tool availability before hardware verification is accepted.
+- Native verification preflight resolves discovered tool paths before hardware verification evidence is saved.
+- Native verification preflight resolves PATH entries with Windows executable suffixes before hardware verification evidence is saved.
+- Native verification preflight resolves PATH entries case-insensitively before hardware verification evidence is saved.
+- Native verification preflight resolves WDK standard install paths before hardware verification evidence is saved.
+- Native verification preflight resolves standard install path entries case-insensitively before hardware verification evidence is saved.
+- Native verification preflight resolves versionless WDK Tools install paths before hardware verification evidence is saved.
+- Native verification preflight resolves WSL-mounted Windows standard install paths before hardware verification evidence is saved.
+- Native verification preflight resolves Windows Swift standard install paths before hardware verification evidence is saved.
+- Native verification preflight resolves MSBuild from vswhere installation paths before hardware verification evidence is saved.
+- Native verification preflight resolves standard vswhere install paths before hardware verification evidence is saved.
+- Native verification preflight resolves Xcode developer directory paths before hardware verification evidence is saved.
+- Native verification preflight resolves xcrun-selected xcodebuild paths before hardware verification evidence is saved.
+- Native verification preflight resolves standard Xcode application paths before hardware verification evidence is saved.
+- Native verification preflight resolves Xcode beta application paths before hardware verification evidence is saved.
+- Native verification preflight resolves user-local CMake install paths before hardware verification evidence is saved.
+- Native verification preflight resolves Homebrew CMake paths before hardware verification evidence is saved.
+- Native verification preflight resolves PowerShell preview standard install paths before hardware verification evidence is saved.
+- Native verification preflight resolves Homebrew PowerShell paths before hardware verification evidence is saved.
+- Native verification preflight resolves Windows drive paths returned by vswhere before hardware verification evidence is saved.
+- Native verification preflight resolves Visual Studio 2019 MSBuild standard paths before hardware verification evidence is saved.
+- Native verification preflight resolves user WindowsApps PowerShell aliases before hardware verification evidence is saved.
+- Native verification preflight resolves Visual Studio bundled CMake before hardware verification evidence is saved.
+- Native verification preflight resolves Windows Swift toolchain install paths before hardware verification evidence is saved.
+- Native verification preflight resolves Homebrew Swift paths before hardware verification evidence is saved.
+- Native verification preflight resolves xcrun-selected Swift paths before hardware verification evidence is saved.
+- Native verification preflight resolves Xcode application Swift toolchain paths before hardware verification evidence is saved.
+- Native verification preflight resolves Visual Studio bundled CMake from vswhere installation paths before hardware verification evidence is saved.
+- Native verification preflight resolves user WindowsApps CMake aliases before hardware verification evidence is saved.
+- Native verification preflight resolves user WindowsApps Swift aliases before hardware verification evidence is saved.
+- Native verification preflight resolves WSL-mounted Windows user-local app data paths before hardware verification evidence is saved.
+- Native verification preflight resolves VSINSTALLDIR MSBuild paths before hardware verification evidence is saved.
+- Native verification preflight resolves WindowsUserModeDriver10.0 MSBuild platform toolset paths before hardware verification evidence is saved.
+- Native verification preflight resolves WindowsSdkVerBinPath signing tool paths before hardware verification evidence is saved.
+- Native verification preflight resolves WDKContentRoot DevGen paths before hardware verification evidence is saved.
+- Native verification preflight resolves Windows drive paths from environment variables before hardware verification evidence is saved.
+- Native verification preflight resolves WindowsSdkDir and WindowsSDKVersion signing tool paths before hardware verification evidence is saved.
+- Native verification preflight resolves KIT_ROOT_10 DevGen paths before hardware verification evidence is saved.
+- Native verification preflight resolves Windows drive PATH entries before hardware verification evidence is saved.
+- Native verification preflight resolves semicolon-separated Windows PATH entries before hardware verification evidence is saved.
+- Native verification preflight resolves user-local PowerShell install paths before hardware verification evidence is saved.
+- Native verification preflight resolves user-local Microsoft PowerShell install paths before hardware verification evidence is saved.
+- Native verification preflight resolves explicit native tool override paths before hardware verification evidence is saved.
+- Native verification preflight resolves Windows drive native tool override paths before hardware verification evidence is saved.
+- Native verification preflight rejects symbolic-link discovered native tool paths before hardware verification evidence is saved.
+- Native verification preflight rejects symbolic-link discovered native tool parent directories before hardware verification evidence is saved.
+- Native preflight evidence validator checks saved preflight output before hardware verification is accepted.
+- Native preflight evidence validator rejects --allow-missing evidence before hardware verification is accepted.
+- Native preflight evidence validator rejects duplicate key-value fields before hardware verification is accepted.
+- Native preflight evidence validator rejects case-variant duplicate key-value fields before hardware verification is accepted.
+- Native preflight evidence validator requires ISO-8601 GeneratedAt metadata with timezone before hardware verification is accepted.
+- Native preflight evidence validator rejects impossible GeneratedAt calendar timestamps before hardware verification is accepted.
+- Native preflight evidence validator rejects future GeneratedAt timestamps before hardware verification is accepted.
+- Native preflight evidence validator requires complete native tool coverage before hardware verification is accepted.
+- Native preflight evidence validator rejects duplicate native command tool entries before hardware verification is accepted.
+- Native preflight evidence validator rejects case-variant duplicate native command tool entries before hardware verification is accepted.
+- Native preflight evidence validator rejects unexpected native command tool entries before hardware verification is accepted.
+- Native preflight evidence validator requires the expected native preflight runner before hardware verification is accepted.
+- Native preflight evidence validator requires Command metadata to invoke the expected native preflight runner before hardware verification is accepted.
+- Native preflight evidence validator requires Command metadata to start with a resolved Python command before hardware verification is accepted.
+- Native preflight evidence validator rejects empty native tool status lines before hardware verification is accepted.
+- Native preflight evidence validator requires native tool output statuses to be resolved paths before hardware verification is accepted.
+- Native preflight evidence validator requires native tool output statuses to be absolute resolved paths before hardware verification is accepted.
+- Native preflight evidence validator requires native tool output path basenames to match the requested tool names before hardware verification is accepted.
+- Native preflight evidence validator rejects duplicate native tool output lines before hardware verification is accepted.
+- Native preflight evidence validator rejects case-variant duplicate native tool output lines before hardware verification is accepted.
+- Native preflight evidence validator rejects unexpected native tool output lines before hardware verification is accepted.
+- Native preflight evidence validator rejects malformed native tool output lines before hardware verification is accepted.
+- Native preflight evidence validator rejects forbidden payload markers case-insensitively before hardware verification is accepted.
+- Native preflight evidence validator rejects forbidden payload markers with optional whitespace before equals before hardware verification is accepted.
+- Native preflight evidence validator rejects missing evidence files before hardware verification is accepted.
+- Native preflight evidence validator rejects non-UTF-8 evidence files before hardware verification is accepted.
+- Native preflight evidence validator rejects directory evidence paths before hardware verification is accepted.
+- Native preflight evidence validator rejects symbolic-link evidence paths before hardware verification is accepted.
+- Native preflight evidence validator rejects symbolic-link evidence parent directories before hardware verification is accepted.
+- Native verification preflight evidence script writes E2E native-preflight evidence before hardware verification is accepted.
+- Native verification preflight evidence script refuses accidental native-preflight evidence overwrite before hardware verification is accepted.
+- Native verification preflight evidence script rejects symbolic-link output paths before hardware verification is accepted.
+- Native verification preflight evidence script rejects symbolic-link output parent directories before hardware verification is accepted.
+- Native verification preflight evidence script rejects directory output paths before hardware verification is accepted.
+- Native verification preflight evidence script rejects file-valued output parent paths before hardware verification is accepted.
+- Native verification preflight evidence script rejects symbolic-link Python command paths before hardware verification is accepted.
+- Native verification preflight evidence script rejects symbolic-link Python command parent directories before hardware verification is accepted.
+- Native verification preflight evidence script rejects directory Python command paths before hardware verification is accepted.
+- Native verification preflight evidence script records the resolved Python command before hardware verification is accepted.
+- Native verification preflight evidence script validates saved native preflight evidence before hardware verification is accepted.
+- E2E diagnostic bundle validator checks host, iPad, and IDD evidence logs without screen contents.
+- E2E diagnostic bundle validator rejects forbidden payload markers case-insensitively before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects forbidden payload markers with optional whitespace before equals before E2E verification is accepted.
+- E2E diagnostic bundle validator requires host and iPad sanitized-export privacy disclaimers.
+- E2E diagnostic bundle validator requires iPad input/video transport start diagnostics before the connected state.
+- E2E diagnostic bundle validator requires iPad input/video Network.framework ready diagnostics before drawing evidence is accepted.
+- E2E diagnostic bundle validator requires iPad reconnect stability diagnostics before reconnect evidence is accepted.
+- E2E diagnostic bundle validator requires iPad reconnect stability attempts and successful reconnects to meet the required attempt count.
+- E2E diagnostic bundle validator requires host input/video TCP listener readiness before accepting the tablet session channels.
+- E2E diagnostic bundle validator requires host input/video TCP channel acceptance for the tablet session channels.
+- E2E diagnostic bundle validator requires host input/video TCP channel acceptance at or after the iPad connected state.
+- E2E diagnostic bundle validator verifies host input/video listener and accepted ports match the IDD host command metadata.
+- E2E diagnostic bundle validator requires timestamped host forced pen-up events.
+- E2E diagnostic bundle validator requires timestamped host disconnect diagnostics.
+- E2E diagnostic bundle validator requires host forced pen-up diagnostics at or after host disconnect diagnostics.
+- E2E diagnostic bundle validator requires host forced pen-up diagnostics within 300 ms after host disconnect diagnostics.
+- E2E diagnostic bundle validator requires host `current_display_mapping` to include the selected virtual monitor display id.
+- E2E diagnostic bundle validator requires host `current_display_mapping` to include nonzero virtual screen rectangle fields.
+- E2E diagnostic bundle validator verifies host current_display_mapping dimensions match the IDD CurrentMode.
+- E2E diagnostic bundle validator requires timestamped host capture target diagnostics.
+- E2E diagnostic bundle validator requires timestamped host latency stage diagnostics.
+- E2E diagnostic bundle validator requires host end-to-end p50/p95 latency diagnostics on the same diagnostic line.
+- E2E diagnostic bundle validator rejects host end-to-end p95 latency above the 100 ms MVP budget.
+- E2E diagnostic bundle validator verifies host stale-frame drop diagnostics include dropped and replacement sequence numbers.
+- E2E diagnostic bundle validator rejects host stale-frame drop diagnostics with zero dropped frame count or identical replacement/dropped sequences.
+- E2E diagnostic bundle validator verifies host capture target diagnostics match the host command capture source.
+- E2E diagnostic bundle validator requires host packet sequence and packet drop diagnostics.
+- E2E diagnostic bundle validator requires host runtime latency summary diagnostics.
+- E2E diagnostic bundle validator rejects duplicate key-value fields on host and iPad diagnostic lines.
+- E2E diagnostic bundle validator rejects case-variant duplicate key-value fields on host and iPad diagnostic lines.
+- E2E diagnostic bundle validator rejects negative timestamp_ns diagnostics before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects non-positive iPad receive FPS and empty frame payload evidence.
+- E2E diagnostic bundle validator rejects negative iPad video latency and dropped-frame metrics.
+- E2E diagnostic bundle validator rejects out-of-range iPad Pencil pressure and tilt diagnostics.
+- E2E diagnostic bundle validator requires sent iPad Pencil samples to include pressure variation.
+- E2E diagnostic bundle validator requires sent iPad Pencil samples to include nonzero tilt evidence.
+- E2E diagnostic bundle validator requires iPad Pencil DOWN/MOVE/UP timestamp ordering.
+- E2E diagnostic bundle validator requires iPad hover capability diagnostics before drawing evidence is accepted.
+- E2E diagnostic bundle validator requires iPad pressure capability diagnostics before pressure evidence is accepted.
+- E2E diagnostic bundle validator requires iPad pressure capability diagnostics to be supported on the pressure_capability line with maximum_possible_force greater than 1.
+- E2E diagnostic bundle validator requires iPad tilt capability diagnostics before tilt evidence is accepted.
+- E2E diagnostic bundle validator requires iPad tilt capability diagnostics to be supported on the tilt_capability line.
+- E2E diagnostic bundle validator requires iPad calibration result diagnostics before coordinate evidence is accepted.
+- E2E diagnostic bundle validator requires iPad calibration result sample counts to cover the default eight-point corner, center, and diagonal workflow.
+- E2E diagnostic bundle validator requires iPad calibration result orientation to be landscape or portrait.
+- E2E diagnostic bundle validator requires iPad Pencil samples to be marked source=pencil.
+- E2E diagnostic bundle validator requires iPad palm rejection diagnostics for rejected finger touches.
+- E2E diagnostic bundle validator requires normalized iPad Pencil x/y diagnostics.
+- E2E diagnostic bundle validator rejects missing host logs before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects non-UTF-8 host logs before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects directory host log paths before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects symbolic-link host log paths before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects symbolic-link host log parent directories before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects missing iPad logs before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects non-UTF-8 iPad logs before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects directory iPad log paths before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects symbolic-link iPad log paths before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects symbolic-link iPad log parent directories before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects missing IDD evidence before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects non-UTF-8 IDD evidence before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects directory IDD evidence paths before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects symbolic-link IDD evidence paths before E2E verification is accepted.
+- E2E diagnostic bundle validator rejects symbolic-link IDD evidence parent directories before E2E verification is accepted.
+- Final product evidence manifest writer creates schema-valid manifests before completion evidence is accepted.
+- Final product evidence manifest writer records explicit display device and optional HID scope before completion evidence is accepted.
+- Final product evidence manifest writer CLI requires an explicit display device name before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-string display device names before completion evidence is accepted.
+- Final product evidence manifest writer rejects invalid display device names before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-boolean optional HID scopes before completion evidence is accepted.
+- Final product evidence manifest writer applies known artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-dictionary artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-string artifact path override fields before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-string artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-string --set override inputs before completion evidence is accepted.
+- Final product evidence manifest writer rejects duplicate artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects unknown artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects malformed artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects placeholder artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects absolute artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects parent-traversing artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects empty or current-directory artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects colon-containing artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects Windows reserved-name artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects trailing-dot-or-space artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects Windows-invalid-character artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects control-character artifact path overrides before completion evidence is accepted.
+- Final product evidence manifest writer rejects duplicate artifact path outputs before completion evidence is accepted.
+- Final product evidence manifest writer rejects case-variant or separator-variant duplicate artifact path outputs before completion evidence is accepted.
+- Final product evidence manifest writer refuses accidental overwrite without --force before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-Path output paths before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-boolean force flags before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-dictionary manifest content before completion evidence is accepted.
+- Final product evidence manifest writer rejects invalid manifest_version content before completion evidence is accepted.
+- Final product evidence manifest writer rejects invalid display_device_name content before completion evidence is accepted.
+- Final product evidence manifest writer rejects invalid require_optional_hid content before completion evidence is accepted.
+- Final product evidence manifest writer rejects unknown manifest content fields before completion evidence is accepted.
+- Final product evidence manifest writer rejects missing or non-string manifest path content before completion evidence is accepted.
+- Final product evidence manifest writer rejects invalid manifest path content values before completion evidence is accepted.
+- Final product evidence manifest writer rejects directory output paths before completion evidence is accepted.
+- Final product evidence manifest writer rejects non-directory output parent paths before completion evidence is accepted.
+- Final product evidence manifest writer rejects symbolic-link output paths before completion evidence is accepted.
+- Final product evidence manifest writer rejects symbolic-link output parent directories before completion evidence is accepted.
+- Final product evidence bundle validator runs the manual, E2E diagnostic, IDD runtime, IDD verification, native preflight, Synthetic Pointer debug stroke, and in-scope optional HID evidence validators from one manifest.
+- Final product evidence bundle validator rejects missing manifest files before completion evidence is accepted.
+- Final product evidence bundle validator rejects directory manifest paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-UTF-8 manifests before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-object manifest roots before completion evidence is accepted.
+- Final product evidence bundle failed summaries omit manifest_sha256 for unreadable manifests.
+- Final product evidence bundle validator rejects symbolic-link manifest files before completion evidence is accepted.
+- Final product evidence bundle validator rejects symbolic-link manifest parent directories before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-integer manifest_version before completion evidence is accepted.
+- Final product evidence bundle failed summaries do not synthesize manifest_version metadata.
+- Final product evidence bundle validator rejects duplicate manifest fields before completion evidence is accepted.
+- Final product evidence bundle validator rejects case-variant duplicate manifest fields before completion evidence is accepted.
+- Final product evidence bundle failed summaries omit duplicated scalar metadata fields.
+- Final product evidence bundle validator rejects unknown manifest fields before completion evidence is accepted.
+- Final product evidence bundle validator rejects manifest fields reserved for validator internals before completion evidence is accepted.
+- Final product evidence bundle validator rejects placeholder manifest string values before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-string manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects absolute or parent-traversing manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects Windows-rooted manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects colon-containing manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects Windows reserved-name manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects trailing-dot-or-space manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects Windows-invalid-character manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects control-character manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects empty or current-directory manifest artifact path segments before completion evidence is accepted.
+- Final product evidence bundle validator rejects duplicate manifest artifact and evidence paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects malformed inactive optional HID manifest paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects missing manifest evidence files before completion evidence is accepted.
+- Final product evidence bundle validator rejects missing manifest artifact files before completion evidence is accepted.
+- Final product evidence bundle validator rejects symbolic-link manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects symbolic-link directory manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects directory-valued manifest artifact paths before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-UTF-8 evidence files before completion evidence is accepted.
+- Final product evidence bundle summary hash skips non-file manifest paths without raising.
+- Final product evidence bundle summary lists only accepted manifest artifact paths.
+- Final product evidence bundle summary excludes unexpected driver artifact filenames.
+- Final product evidence bundle failed summaries omit validator execution lists.
+- Final product evidence bundle failed summaries omit verified artifact claims.
+- Final product evidence bundle CLI writes failed validation summaries when --summary-json is provided.
+- Final product evidence bundle summaries report validation failure counts that match the failure list length.
+- Final product evidence bundle summaries report manifest_path as an absolute path.
+- Final product evidence bundle CLI refuses to overwrite existing summary JSON outputs before completion evidence is accepted.
+- Final product evidence bundle CLI rejects symbolic-link summary JSON outputs before completion evidence is accepted.
+- Final product evidence bundle CLI rejects symbolic-link summary JSON parent directories before completion evidence is accepted.
+- Final product evidence bundle CLI rejects directory summary JSON outputs before completion evidence is accepted.
+- Final product evidence bundle CLI rejects non-directory summary JSON parent paths before completion evidence is accepted.
+- Final product evidence bundle validator requires explicit display_device_name metadata before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-Windows display_device_name values before completion evidence is accepted.
+- Final product evidence bundle failed summaries do not synthesize display_device_name metadata.
+- Final product evidence bundle validator requires explicit require_optional_hid scope metadata before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-boolean require_optional_hid manifests before completion evidence is accepted.
+- Final product evidence bundle validator rejects non-boolean require_optional_hid scope flags before completion evidence is accepted.
+- Final product evidence bundle validator rejects manifests that contradict --require-optional-hid scope before completion evidence is accepted.
+- Final product evidence bundle failed summaries do not synthesize optional_hid_required metadata.
+- Final product evidence bundle validator requires IDD INF and catalog artifacts before completion evidence is accepted.
+- Final product evidence bundle validator rejects unexpected driver artifact filenames before completion evidence is accepted.
+- Final product evidence bundle validator requires in-scope optional HID INF and catalog artifacts before completion evidence is accepted.
+- `DiagnosticLog` exports structured host diagnostics without screen contents or personal data.
+- Diagnostic privacy filters redact screen, pixel payload, and host identifier values while preserving size metadata.
+- Host `write_diagnostic_log_text` and iPad `AppDiagnosticLogExporter` provide diagnostic file export wiring.
+- `--serve-tablet --diagnostic-log` provides host diagnostic log export for tablet sessions.
+- `--listen-input --diagnostic-log` provides input listener diagnostic log export on disconnect.
+- Host input diagnostics report whether a disconnect came from stream close or stream error.
+- `--stream-video --diagnostic-log` provides video stream diagnostic log export on Ctrl+C.
+- `--advertise-discovery --diagnostic-log` provides discovery diagnostic log export on stop.
+- `AppDiagnosticLog` exports structured iPad diagnostics without screen contents, pixel payloads, or personal data.
+- `AppDiagnosticScreen` lists iPad diagnostics and exposes text/JSON export actions.
+- `AppDiagnosticShareSheet` wraps iOS sharing for exported diagnostic text/JSON files.
+- Bonjour/mDNS interoperability has a host-side DNS-SD/mDNS response path; cross-device network verification is not completed yet.
+
+## M9 Optional Virtual HID Pen Driver
+
+Status: In progress
+
+Consider a UMDF HID minidriver only if Synthetic Pointer compatibility is insufficient. Acceptance requires Device Manager visibility as a HID pen class device, Windows Ink pressure, install/uninstall docs, and driver signing constraints.
+
+Current status:
+
+- `windows/hid_driver_optional/src/hid_report_descriptor.*` defines an optional HID digitizer descriptor skeleton with Tip Switch, In Range, X/Y, Pressure, X Tilt, and Y Tilt.
+- HID descriptor contract validation checks the digitizer usage page, report ID, coordinate range, coordinate physical units, pressure range, and tilt range.
+- HID pen report builder clamps normalized X/Y, pressure, and tilt into report values for the optional driver boundary, forces In Range for contact and zeroes pressure when Tip Switch is up, validates HID reports before the optional driver boundary, and builds a release report that clears Tip Switch, In Range, and pressure while preserving the last position.
+- The optional HID boundary serializes the HID pen report to a 10-byte little-endian input report, serializes release reports with cleared buttons and pressure, and its checked serializer refuses invalid HID reports; release report clears Tip Switch, In Range, and pressure.
+- Optional HID device descriptor advertises the HID descriptor and report descriptor length before report descriptor and input-report IOCTLs are accepted.
+- Optional HID device attributes provide development-only VID, PID, and version metadata through HIDClass before production identifiers are assigned.
+- Optional HID string response returns manufacturer, product, and serial strings for HIDClass identification requests.
+- Optional HID UMDF input report IOCTL returns the current pen input report bytes without consuming the manual read queue.
+- Optional HID device state keeps the report descriptor, last valid pen report, serialized report bytes, and release-report transition testable outside WDF.
+- Optional HID request handler maps descriptor, input-report, sample, and release requests onto the testable HID device state before WDF queue wiring.
+- Optional HID WDF default queue routes report descriptor requests through the testable HID request handler and forwards read-report IOCTLs to a manual read queue.
+- The optional HID report descriptor test is available through CMake without building the WDK driver skeleton.
+- `windows/hid_driver_optional/inf/windows_liquid_tablet_hid.inf` is a development INF skeleton.
+- Optional HID WDK UMDF project builds the development HID driver as a WindowsUserModeDriver10.0 dynamic library.
+- Optional HID UMDF DLL entrypoints provide DllMain and DriverEntry for WDF driver creation.
+- Optional HID activation lifecycle handles HIDClass activate and deactivate requests before reporting runtime readiness.
+- Optional HID UMDF INF registration uses WUDFRD Include/Needs sections and copies the development DLL into the UMDF driver directory.
+- Optional HID WDK package script stages the development INF and DLL, runs Inf2Cat, and can sign the catalog with signtool.
+- Optional HID WDK build script rejects symbolic-link project paths before optional HID verification is accepted.
+- Optional HID WDK build script rejects symbolic-link project parent directories before optional HID verification is accepted.
+- Optional HID WDK build script rejects directory project paths before optional HID verification is accepted.
+- Optional HID WDK build script rejects symbolic-link MSBuild tool paths before optional HID verification is accepted.
+- Optional HID WDK build script rejects symbolic-link MSBuild tool parent directories before optional HID verification is accepted.
+- Optional HID WDK build script rejects directory MSBuild tool paths before optional HID verification is accepted.
+- Optional HID WDK build script restricts Configuration to Debug or Release and Platform to x64 before optional HID verification is accepted.
+- Optional HID WDK build script rejects directory built driver outputs before optional HID verification is accepted.
+- Windows build entrypoint rejects symbolic-link build directories before optional HID verification is accepted.
+- Windows build entrypoint rejects symbolic-link build directory parents before optional HID verification is accepted.
+- Windows build entrypoint rejects file-valued build paths before optional HID verification is accepted.
+- Windows build entrypoint rejects file-valued build parent paths before optional HID verification is accepted.
+- Windows build entrypoint restricts Config to Debug or Release and HID Platform to x64 before optional HID verification is accepted.
+- Windows build entrypoint stops after CMake configure failures before optional HID verification is accepted.
+- Windows build entrypoint stops after CMake build failures before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link package output directories before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link package output parent directories before optional HID verification is accepted.
+- Optional HID WDK package script rejects file-valued package output paths before optional HID verification is accepted.
+- Optional HID WDK package script rejects file-valued package output parent paths before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link INF inputs before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link INF input parent directories before optional HID verification is accepted.
+- Optional HID WDK package script rejects directory INF inputs before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link driver binary inputs before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link driver binary input parent directories before optional HID verification is accepted.
+- Optional HID WDK package script rejects directory driver binary inputs before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link staged INF outputs before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link staged driver binary outputs before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link catalog outputs before optional HID verification is accepted.
+- Optional HID WDK package script resolves Inf2Cat before staging package outputs.
+- Optional HID WDK package script resolves signtool before staging package outputs when test signing is requested.
+- Optional HID WDK package script verifies the generated catalog before optional signing.
+- Optional HID WDK package script rejects symbolic-link Inf2Cat tool paths before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link Inf2Cat tool parent directories before optional HID verification is accepted.
+- Optional HID WDK package script rejects directory Inf2Cat tool paths before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link signtool tool paths before optional HID verification is accepted.
+- Optional HID WDK package script rejects symbolic-link signtool tool parent directories before optional HID verification is accepted.
+- Optional HID WDK package script rejects directory signtool tool paths before optional HID verification is accepted.
+- Optional HID WDK package script rejects malformed test certificate thumbprints before optional HID verification is accepted.
+- Optional HID WDK package script rejects malformed Inf2Cat OS version lists before optional HID verification is accepted.
+- Optional HID WDK build entrypoints pass Inf2Cat OS version lists through packaging before optional HID verification is accepted.
+- Optional HID WDK install scripts create a ROOT devnode with DevGen, install the development HID INF with pnputil, and remove the device/package after testing.
+- Optional HID WDK install scripts reject directory INF paths before creating development devnodes.
+- Optional HID WDK install scripts reject symbolic-link INF paths before optional HID verification is accepted.
+- Optional HID WDK install scripts reject symbolic-link INF parent directories before optional HID verification is accepted.
+- Optional HID WDK install scripts reject symbolic-link DevGen tool paths before optional HID verification is accepted.
+- Optional HID WDK install scripts reject symbolic-link DevGen tool parent directories before optional HID verification is accepted.
+- Optional HID WDK install scripts reject directory DevGen tool paths before optional HID verification is accepted.
+- Optional HID WDK install scripts reject symbolic-link PnPUtil tool paths before optional HID verification is accepted.
+- Optional HID WDK install scripts reject symbolic-link PnPUtil tool parent directories before optional HID verification is accepted.
+- Optional HID WDK install scripts reject directory PnPUtil tool paths before optional HID verification is accepted.
+- Optional HID WDK install scripts restrict HardwareId to Root\WindowsLiquidTabletHidPen before optional HID verification is accepted.
+- Optional HID WDK install scripts restrict InstanceId to WindowsLiquidTabletHidPen before optional HID verification is accepted.
+- Optional HID WDK uninstall scripts restrict HardwareId to Root\WindowsLiquidTabletHidPen before optional HID verification is accepted.
+- Optional HID WDK uninstall scripts restrict published INF deletion to oem<number>.inf names before optional HID verification is accepted.
+- Optional HID WDK uninstall scripts reject symbolic-link PnPUtil tool paths before optional HID verification is accepted.
+- Optional HID WDK uninstall scripts reject symbolic-link PnPUtil tool parent directories before optional HID verification is accepted.
+- Optional HID WDK uninstall scripts reject directory PnPUtil tool paths before optional HID verification is accepted.
+- HID Windows verification runner chains report tests, package, install, evidence validation, and cleanup for development verification.
+- HID Windows verification runner performs native tool preflight before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner writes native preflight output to sanitized evidence before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner refuses accidental native preflight evidence overwrite before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects symbolic-link native preflight evidence output paths before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects symbolic-link native preflight evidence output parent directories before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects directory native preflight evidence output paths before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects file-valued native preflight evidence output parent paths before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects symbolic-link Python command paths before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects symbolic-link Python command parent directories before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects directory Python command paths before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner records the resolved Python command in native preflight evidence before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner validates saved native preflight evidence before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner validates saved native preflight evidence before failing on a native preflight exit code.
+- HID Windows verification runner rejects symbolic-link host tool paths before optional HID runtime or debug evidence is accepted.
+- HID Windows verification runner rejects symbolic-link host tool parent directories before optional HID runtime or debug evidence is accepted.
+- HID Windows verification runner rejects directory host tool paths before optional HID runtime or debug evidence is accepted.
+- HID Windows verification runner restricts Configuration to Debug or Release and Platform to x64 before report tests, WDK package/install, and evidence validation are accepted.
+- HID Windows verification runner rejects directory packaged INF paths before install is accepted.
+- HID Windows verification runner rejects symbolic-link build directories before report tests or host tool builds are accepted.
+- HID Windows verification runner rejects symbolic-link build directory parents before report tests or host tool builds are accepted.
+- HID Windows verification runner rejects file-valued build paths before report tests or host tool builds are accepted.
+- HID Windows verification runner rejects file-valued build parent paths before report tests or host tool builds are accepted.
+- Optional HID runtime evidence script collects sanitized PnP device, published driver, and HID class enumeration evidence.
+- Optional HID runtime evidence script refuses accidental runtime evidence overwrite before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects symbolic-link output paths before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects symbolic-link output parent directories before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects directory output paths before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects file-valued output parent paths before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects symbolic-link PnPUtil tool paths before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects symbolic-link PnPUtil tool parent directories before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects directory PnPUtil tool paths before optional HID verification is accepted.
+- Optional HID runtime evidence script restricts HardwareId to Root\WindowsLiquidTabletHidPen before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects symbolic-link host tool paths before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects symbolic-link host tool parent directories before optional HID verification is accepted.
+- Optional HID runtime evidence script rejects directory host tool paths before optional HID verification is accepted.
+- Optional HID runtime evidence script validates the host tool path before preparing output directories.
+- Optional HID runtime evidence script fails before writing evidence when the host HID list tool is missing.
+- Optional HID runtime evidence validator checks collected HID hardware ID, published INF, OK device status, HIDClass, and friendly-name evidence before optional HID verification is accepted.
+- Optional HID runtime evidence validator requires ISO-8601 GeneratedAt metadata with timezone before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects impossible GeneratedAt calendar timestamps before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects future GeneratedAt timestamps before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects forbidden payload markers case-insensitively before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects forbidden payload markers with optional whitespace before equals before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects duplicate singleton runtime evidence fields before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects case-variant duplicate singleton runtime evidence fields before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects conflicting selected PnP device or entity identity lines before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects conflicting selected PnP device status lines before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects conflicting host HID interface identity lines before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects missing evidence files before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects non-UTF-8 evidence files before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects directory evidence paths before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects symbolic-link evidence paths before optional HID verification is accepted.
+- Optional HID runtime evidence validator rejects symbolic-link evidence parent directories before optional HID verification is accepted.
+- Optional HID runtime host device list evidence records the host --list-hid-devices output with VID/PID/version and the development optional HID marker.
+- HID Windows verification runner collects and validates optional HID runtime evidence before manual Windows Ink evidence is accepted.
+- Optional HID host report adapter serializes host pen events into 10-byte HID reports and writes them to the optional HID update IOCTL.
+- Optional HID receiver injection interface lets the packet receiver drive either Synthetic Pointer injection or the optional HID report writer.
+- Optional HID runtime injection backend lets the host input runtime own either Synthetic Pointer injection or the optional HID report writer.
+- Optional HID runtime backend CLI lets listen-input and serve-tablet choose the HID report writer with an explicit HID device path.
+- Optional HID device path listing lets the host enumerate present HID interface paths before selecting the optional HID backend.
+- Optional HID device attribute listing shows VID/PID/version metadata and marks the development optional HID device.
+- Optional HID auto device selection resolves the development HID path from attributes when the host is started with --hid-device-path auto.
+- Optional HID debug fixed rectangle command writes a pressure- and tilt-varying debug stroke through the optional HID backend for Windows Ink verification.
+- Optional HID debug command runner can invoke the fixed rectangle HID stroke during Windows verification when explicitly requested.
+- Optional HID debug command runner restricts DebugHidDevicePath to auto or an explicit Windows HID path before debug evidence is accepted.
+- Optional HID debug stroke evidence records the fixed-rectangle HID command, exit code, and sanitized output for verification runs.
+- Optional HID debug stroke evidence runner refuses accidental debug stroke evidence overwrite before verification evidence is accepted.
+- Optional HID debug stroke evidence runner rejects symbolic-link debug stroke evidence output paths before verification evidence is accepted.
+- Optional HID debug stroke evidence runner rejects symbolic-link debug stroke evidence output parent directories before verification evidence is accepted.
+- Optional HID debug stroke evidence validator checks the fixed-rectangle HID command exit code, HID device path consistency, six-command count, pressure/tilt ranges, and success marker before verification evidence is accepted.
+- Optional HID debug stroke evidence validator requires ISO-8601 GeneratedAt metadata with timezone before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects impossible GeneratedAt calendar timestamps before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects future GeneratedAt timestamps before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects forbidden payload markers case-insensitively before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects forbidden payload markers with optional whitespace before equals before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects dry-run command metadata and extra command tokens before verification evidence is accepted.
+- Optional HID debug stroke evidence validator requires DebugHidDevicePath and --hid-device-path values before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects DebugHidDevicePath values that are not auto or explicit Windows HID paths before verification evidence is accepted.
+- Optional HID debug stroke evidence validator preserves explicit Windows HID device path backslashes before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects duplicate key-value fields before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects case-variant duplicate key-value fields before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects missing evidence files before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects non-UTF-8 evidence files before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects directory evidence paths before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects symbolic-link evidence paths before verification evidence is accepted.
+- Optional HID debug stroke evidence validator rejects symbolic-link evidence parent directories before verification evidence is accepted.
+- Optional HID host report update IOCTL lets the Windows host update the testable HID pen report state before HIDClass read requests consume it.
+- Development `pnputil` install/uninstall and Device Manager verification steps are documented with driver signing constraints.
+- HID verification evidence template records WDK build, install, host HID interface list, Device Manager, Windows Ink pressure/tilt, release-report, and cleanup evidence.
+- HID verification evidence validator checks completed optional HID evidence rows before optional HID verification is accepted.
+- HID verification evidence validator rejects duplicate evidence rows before optional HID verification is accepted.
+- HID verification evidence validator rejects case-variant duplicate evidence rows before optional HID verification is accepted.
+- HID verification evidence validator reports both first and duplicate evidence row names for case-variant duplicates.
+- HID verification evidence validator rejects invalid evidence row result values before optional HID verification is accepted.
+- HID verification evidence validator rejects forbidden payload markers case-insensitively before optional HID verification is accepted.
+- HID verification evidence validator rejects forbidden payload markers with optional whitespace before equals before optional HID verification is accepted.
+- HID verification evidence validator rejects duplicate metadata fields before optional HID verification is accepted.
+- HID verification evidence validator rejects case-variant duplicate metadata fields before optional HID verification is accepted.
+- HID verification evidence validator rejects placeholder metadata values before optional HID verification is accepted.
+- HID verification evidence validator rejects placeholder values in every recorded metadata field before optional HID verification is accepted.
+- HID verification evidence validator rejects embedded placeholder text in metadata values before optional HID verification is accepted.
+- HID verification evidence validator requires Evidence ID values for accepted PASS rows.
+- HID verification evidence validator requires accepted PASS row Evidence IDs to match the run Evidence ID.
+- HID verification evidence validator requires completed run metadata before optional HID verification is accepted.
+- HID verification evidence validator requires ISO YYYY-MM-DD Test date metadata before optional HID verification is accepted.
+- HID verification evidence validator rejects future Test date metadata before optional HID verification is accepted.
+- HID verification evidence validator requires concrete Host commit metadata before optional HID verification is accepted.
+- HID verification evidence validator requires Windows 11 build metadata before optional HID verification is accepted.
+- HID verification evidence validator requires Visual Studio 2022 and WDK 10 metadata before optional HID verification is accepted.
+- HID verification evidence validator requires HID INF and catalog metadata before optional HID verification is accepted.
+- HID verification evidence validator requires INF and catalog metadata to stay under Driver package path before optional HID verification is accepted.
+- HID verification evidence validator rejects Windows-invalid metadata paths before optional HID verification is accepted.
+- HID verification evidence validator rejects duplicate metadata evidence paths before optional HID verification is accepted.
+- HID verification evidence validator rejects driver signing bypass metadata before optional HID verification is accepted.
+- HID verification evidence validator rejects driver signing bypass evidence text before optional HID verification is accepted.
+- HID verification evidence validator rejects Secure Boot disablement metadata before optional HID verification is accepted.
+- HID verification evidence validator rejects ambiguous driver signing metadata before optional HID verification is accepted.
+- HID verification evidence validator rejects Test-signing state metadata that denies enabled test signing before optional HID verification is accepted.
+- HID verification evidence validator requires runtime evidence validator PASS before optional HID verification is accepted.
+- HID verification evidence validator requires native tool preflight PASS before optional HID verification is accepted.
+- HID verification evidence validator requires expected runner and validator metadata before optional HID verification is accepted.
+- HID verification evidence validator rejects missing evidence files before optional HID verification is accepted.
+- HID verification evidence validator rejects non-UTF-8 evidence files before optional HID verification is accepted.
+- HID verification evidence validator rejects directory evidence paths before optional HID verification is accepted.
+- HID verification evidence validator rejects symbolic-link evidence paths before optional HID verification is accepted.
+- HID verification evidence validator rejects symbolic-link evidence parent directories before optional HID verification is accepted.
+- IDD Windows verification runner fails when runtime evidence validation exits nonzero before virtual monitor evidence is accepted.
+- IDD Windows verification runner fails when final IDD verification evidence validation exits nonzero before virtual monitor evidence is accepted.
+- HID Windows verification runner fails when optional HID runtime evidence validation exits nonzero before optional HID evidence is accepted.
+- HID Windows verification runner fails when optional HID debug stroke evidence validation exits nonzero before optional HID evidence is accepted.
+- HID Windows verification runner rejects directory debug stroke evidence output paths before optional HID debug evidence is accepted.
+- HID Windows verification runner rejects file-valued debug stroke evidence output parent paths before optional HID debug evidence is accepted.
+- HID Windows verification runner fails when final optional HID verification evidence validation exits nonzero before optional HID evidence is accepted.
+- Windows test entrypoint fails when the build script exits nonzero before CTest is accepted.
+- WDK build script fails when the IDD package script exits nonzero before virtual monitor verification is accepted.
+- Optional HID WDK build script fails when the package script exits nonzero before optional HID verification is accepted.
+- IDD Windows verification runner fails when build, install, runtime evidence, or cleanup scripts exit nonzero before virtual monitor evidence is accepted.
+- HID Windows verification runner fails when build, package, install, runtime evidence, or cleanup scripts exit nonzero before optional HID evidence is accepted.
+- IDD runtime evidence script fails before writing evidence when required PnPUtil commands exit nonzero.
+- Optional HID runtime evidence script fails before writing evidence when required PnPUtil or host list commands exit nonzero.
+- Driver signing safety gate rejects bcdedit.exe and whitespace variants of integrity-check bypass commands.
+- IDD verification evidence validator rejects bcdedit.exe and whitespace variants of driver signing bypass evidence before virtual monitor verification is accepted.
+- HID verification evidence validator rejects bcdedit.exe and whitespace variants of driver signing bypass evidence before optional HID verification is accepted.
+- host diagnostic log export rejects symbolic-link output paths before writing sanitized diagnostics.
+- host diagnostic log export rejects symbolic-link parent directories before writing sanitized diagnostics.
+- iPad diagnostic log export rejects symbolic-link output URLs before writing sanitized diagnostics.
+- iPad diagnostic log export rejects symbolic-link parent directories before writing sanitized diagnostics.
+- iPad settings store rejects symbolic-link file URLs before loading or saving settings.
+- iPad settings store rejects symbolic-link parent directories before loading or saving settings.
+- Actual optional HID driver installation, Device Manager visibility, Windows Ink verification, and signed driver package workflow are not completed yet.

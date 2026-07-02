@@ -1,0 +1,21 @@
+{
+  "manifest_version": 1,
+  "display_device_name": "\\\\.\\DISPLAY7",
+  "require_optional_hid": false,
+  "manual_test_evidence_path": "docs/manual-test-evidence.md",
+  "host_diagnostic_log_path": "artifacts/e2e/host-diagnostics.txt",
+  "ipad_diagnostic_log_path": "artifacts/e2e/ipad-diagnostics.txt",
+  "idd_runtime_evidence_path": "artifacts/idd_driver/runtime-evidence.txt",
+  "idd_inf_path": "artifacts/idd_driver/windows_liquid_tablet_idd.inf",
+  "idd_catalog_file_path": "artifacts/idd_driver/windows_liquid_tablet_idd.cat",
+  "idd_native_preflight_evidence_path": "artifacts/idd_driver/native-preflight.txt",
+  "idd_verification_evidence_path": "docs/idd-driver-verification-evidence.md",
+  "native_preflight_evidence_path": "artifacts/e2e/native-preflight.txt",
+  "synthetic_pointer_debug_stroke_evidence_path": "artifacts/e2e/debug-stroke-evidence.txt",
+  "optional_hid_native_preflight_evidence_path": "artifacts/hid_driver/native-preflight.txt",
+  "optional_hid_runtime_evidence_path": "artifacts/hid_driver/runtime-evidence.txt",
+  "optional_hid_inf_path": "artifacts/hid_driver/windows_liquid_tablet_hid.inf",
+  "optional_hid_catalog_file_path": "artifacts/hid_driver/windows_liquid_tablet_hid.cat",
+  "optional_hid_verification_evidence_path": "artifacts/hid_driver/verification-evidence.txt",
+  "optional_hid_debug_stroke_evidence_path": "artifacts/hid_driver/debug-hid-stroke-evidence.txt"
+}

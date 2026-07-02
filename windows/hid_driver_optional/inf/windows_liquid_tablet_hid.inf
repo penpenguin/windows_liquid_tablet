@@ -1,0 +1,72 @@
+; Windows Liquid Tablet optional HID pen driver INF skeleton.
+; Development only. Follow Microsoft driver signing requirements.
+
+[Version]
+PnpLockDown=1
+Signature="$WINDOWS NT$"
+Class=HIDClass
+ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
+Provider=%ProviderName%
+CatalogFile=windows_liquid_tablet_hid.cat
+DriverVer=01/01/2026,0.0.1.0
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64.10.0...22000
+
+[Standard.NTamd64.10.0...22000]
+%DeviceName%=Device_Install, Root\WindowsLiquidTabletHidPen
+
+[SourceDisksNames]
+1=%DiskName%
+
+[SourceDisksFiles]
+WindowsLiquidTabletHidPen.dll=1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+; =================== UMDF HID Device ==============================
+
+[Device_Install.NT]
+Include=MsHidUmdf.inf
+Needs=MsHidUmdf.NT
+Include=WUDFRD.inf
+Needs=WUDFRD_LowerFilter.NT
+CopyFiles=UMDriverCopy
+
+[Device_Install.NT.HW]
+Include=MsHidUmdf.inf
+Needs=MsHidUmdf.NT.HW
+Include=WUDFRD.inf
+Needs=WUDFRD_LowerFilter.NT.HW
+
+[Device_Install.NT.Services]
+Include=MsHidUmdf.inf
+Needs=MsHidUmdf.NT.Services
+Include=WUDFRD.inf
+Needs=WUDFRD_LowerFilter.NT.Services
+
+[Device_Install.NT.Filters]
+Include=WUDFRD.inf
+Needs=WUDFRD_LowerFilter.NT.Filters
+
+[Device_Install.NT.Wdf]
+UmdfService=WindowsLiquidTabletHidPen,WindowsLiquidTabletHidPen_Install
+UmdfServiceOrder=WindowsLiquidTabletHidPen
+UmdfKernelModeClientPolicy=AllowKernelModeClients
+UmdfFileObjectPolicy=AllowNullAndUnknownFileObjects
+UmdfMethodNeitherAction=Copy
+UmdfFsContextUsePolicy=CanUseFsContext2
+
+[WindowsLiquidTabletHidPen_Install]
+UmdfLibraryVersion=$UMDFVERSION$
+ServiceBinary=%13%\WindowsLiquidTabletHidPen.dll
+
+[UMDriverCopy]
+WindowsLiquidTabletHidPen.dll
+
+[Strings]
+ProviderName="Windows Liquid Tablet"
+ManufacturerName="Windows Liquid Tablet"
+DiskName="Windows Liquid Tablet Optional HID Installation Disk"
+DeviceName="Windows Liquid Tablet Optional HID Pen"

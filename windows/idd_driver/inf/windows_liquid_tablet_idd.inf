@@ -1,0 +1,66 @@
+; Windows Liquid Tablet Indirect Display Driver INF skeleton.
+; This is for development/test-signing only and is not a production driver package.
+
+[Version]
+PnpLockDown=1
+Signature="$WINDOWS NT$"
+Class=Display
+ClassGuid={4d36e968-e325-11ce-bfc1-08002be10318}
+ClassVer=2.0
+Provider=%ProviderName%
+CatalogFile=windows_liquid_tablet_idd.cat
+DriverVer=01/01/2026,0.0.1.0
+
+[Manufacturer]
+%ManufacturerName%=Standard,NTamd64.10.0
+
+[Standard.NTamd64.10.0]
+%DeviceName%=Device_Install, Root\WindowsLiquidTabletIdd
+
+[SourceDisksNames]
+1=%DiskName%
+
+[SourceDisksFiles]
+WindowsLiquidTabletIdd.dll=1
+
+[DestinationDirs]
+UMDriverCopy=12,UMDF
+
+; =================== UMDF Device ==================================
+
+[Device_Install.NT]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT
+CopyFiles=UMDriverCopy
+
+[Device_Install.NT.hw]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.HW
+AddReg=IddCx_AddReg
+
+[IddCx_AddReg]
+HKR,,"UpperFilters",0x00010000,"IndirectKmd"
+HKR,"WUDF","DeviceGroupId",0x00000000,"WindowsLiquidTablet"
+
+[Device_Install.NT.Services]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.Services
+
+[Device_Install.NT.Wdf]
+UmdfService=WindowsLiquidTabletIdd,WindowsLiquidTabletIdd_Install
+UmdfServiceOrder=WindowsLiquidTabletIdd
+UmdfKernelModeClientPolicy = AllowKernelModeClients
+
+[WindowsLiquidTabletIdd_Install]
+UmdfLibraryVersion=$UMDFVERSION$
+ServiceBinary=%12%\UMDF\WindowsLiquidTabletIdd.dll
+UmdfExtensions = IddCx0102
+
+[UMDriverCopy]
+WindowsLiquidTabletIdd.dll
+
+[Strings]
+ProviderName="Windows Liquid Tablet"
+ManufacturerName="Windows Liquid Tablet"
+DiskName="Windows Liquid Tablet IDD Installation Disk"
+DeviceName="Windows Liquid Tablet IndirectDisplay"
