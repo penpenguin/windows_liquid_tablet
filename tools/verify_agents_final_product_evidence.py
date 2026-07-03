@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_TOKENS = {
     "docs/agents-final-product-evidence.md": [
         "# AGENTS Final Product Evidence",
+        "docs/final-product-definition.md",
         "WindowsにiPad用画面を表示できる",
         "iPad上でその画面を見ながらApple Pencilで描ける",
         "Windows側描画アプリで筆圧が取れる",
@@ -40,6 +41,17 @@ REQUIRED_TOKENS = {
         "Reconnect stability attempts",
         "README Known Limitations",
         "Current evidence status: Not fully verified",
+    ],
+    "docs/final-product-definition.md": [
+        "# Final Product Definition",
+        "WindowsにiPad用画面を表示できる",
+        "iPad上でその画面を見ながらApple Pencilで描ける",
+        "Windows側描画アプリで筆圧が取れる",
+        "座標ズレが実用範囲に収まる",
+        "切断時にペン押下状態が残らない",
+        "接続・切断・再接続が安定している",
+        "手動テストチェックリストが整備されている",
+        "未対応機能がREADMEに正直に書かれている",
     ],
     "README.md": [
         "docs/agents-final-product-evidence.md",

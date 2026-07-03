@@ -1,6 +1,6 @@
 # AGENTS Final Product Evidence
 
-This document maps the final product definition in `AGENTS_ipad_windows_liquid_tablet.md` to concrete evidence. Current evidence status: Not fully verified.
+This document maps the Windows Liquid Tablet final product definition in `docs/final-product-definition.md` to concrete evidence. Current evidence status: Not fully verified.
 
 Do not treat portable tests, simulator tests, or source inspection as a substitute for the hardware and native Windows evidence listed here.
 
