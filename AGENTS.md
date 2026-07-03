@@ -1,5 +1,7 @@
-# Repository Instructions
+# Communication / Language
+- 本プロジェクトに関する会話は原則として日本語で行います。
+- コミットメッセージやコード内コメントは英語でも問題ありません。
 
-このリポジトリの詳細なプロジェクト指示は `AGENTS_ipad_windows_liquid_tablet.md` を参照してください。
-
-このリポジトリでは、すべてのコード変更を t-wada TDD の Red, Green, Refactor の小さなサイクルで進めます。
+# Development Approach
+- 本プロジェクトのコード変更は TDD を基本とします。
+- 変更後は関連テストを実行し、未実行の検証があれば理由を報告します。
